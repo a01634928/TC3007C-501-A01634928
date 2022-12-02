@@ -1,0 +1,167 @@
+---
+title: "A-8 series de tiempo no estacionarias"
+author: "Jesús David Núñez rodríguez A01634928"
+date: "2022-11-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+La empresa panasonic en pro de evitar la bancarrota, busca entender mejor el comportamiento de sus ventas durante los trimestres del año.
+a continuación se muestran sus ventas en millones de los ultimos 4 años. A este tipo de data se les conoce como series de tiempo, para analizaralas hay metodos especializados. Más adelante se muestra un ejemplo de aproach para encontrar solución a esta situación.
+
+```{r, out.width = '55%'}
+library("jpeg")
+jj <- readJPEG("a8_tabla.jpg",native=TRUE)
+plot(0:1,0:1,type="n",ann=FALSE,axes=FALSE)
+rasterImage(jj,0,0,1,1)
+array_trimestre <- 1:16
+ventas <- c(4.8,4.1,6.0,6.5,5.8,5.2,6.8,7.4,6.0,5.6,7.5,7.8,6.3,5.9,8.0,8.4)
+```
+
+Como primer paso es necesario realizar un gráfico de dispersión para observar la tendencia y los ciclos.
+
+```{r, out.width = '75%'}
+plot(array_trimestre,ventas,
+     type = "o",
+     xlab = "Trimestre",
+     ylab = "Venta (milllones)",
+     main = "Venta trimestral de tv´s")
+
+```
+
+Se puede apreciar que la serie no es estacionaria debido a que se observar patrones que se repiten cada 4 trimestres.Como cabría esperar un incremento durante el ultimo trimestre de cada año, correspondiente a una temporada alta de ventas para el sector.
+
+Ahora se realizará un análisis de tendencia y estacionalidad para visuallizar la tendencia de las ventas futuras.
+
+
+```{r, out.width = '80%'}
+ts <- ts(ventas, frequency = 4)
+decomp <- decompose(ts, type = "m")
+plot(decomp)
+```
+Tras descomponer en sus 3 componententes, primero se observa en la gráfica de trend tine una tendencia positiva por lo que nos dice que las ventas de los televisores seguirán en incremento durante los próximos años.  
+Con la gráfica 'seasonal' se observa lo que mencionabamos anteriormente, es no estacionaria con periodos anuales(4 trimestres).
+
+Como siguiente paso se analizará el modelo lineal de la tendencia
+
+```{r, out.width = '80%'}
+plot(decomp$trend,
+     type = "o",
+     xlab = "Año",
+     ylab = "Ventas (millones)",
+     main = "Tendencia")
+```
+La tendencia de ventas desestacionalizadas se observa positiva, aparentemente lineal. A continuación se muestra la recta junto con los valores de las ventas desestacionalizadas.
+
+
+```{r, out.width = '80%'}
+y <- (decomp$x)/(decomp$seasonal)
+x <- 1:16
+Lm <- lm(y~x)
+plot(x,y,
+     type = "o",
+     xlab = "Trimestre",
+     ylab = "Ventas (millones)",
+     main = "Tendencia")
+abline(Lm, col = "red")
+```
+Se observa que en el segundo trimestre de cada periodo(anual) la recta de tendencia Ventas = 0.1474*trimestre + 5.108 muestra mayor error en comparación con el resto de trimestres que se ajustan más a la linea de tendencia. 
+
+
+```{r}
+sLm <- summary(Lm)
+sLm
+```
+Al analizar la pertinencia del modelo los valores de p son menores a 0.05, incluso su valor es menor a 0.001. sumado a esto r-cuadrdada es 0.92 lo que representa una explicación del modelo de 92%.
+Tras lo realizado anteriormente se procede a validar B1
+
+```{r}
+print('B1:')
+sLm$coefficients[2,4]
+```
+Es menor a 0.05 por lo que no se rechaza el modelo, con lo cual se concluye que la pendiente es significativa para el modelo. 
+Posteriormente se analizan los residuos del modelo por trimestre.
+
+```{r, out.width = '80%'}
+plot(Lm$residuals,
+     type = "o",
+     xlab = "Trimestre",
+     ylab = "Residuos",
+     main = "Residuos")
+```
+No se aprecia visualmente algún patron, por lo que se presuponen aleatorios. Sin embargo es necesario validar esto con una prueba de normalidad.
+
+```{r}
+shapiro.test(Lm$residuals)
+```
+Los reusltados de la prueba de normalidad Shapiro-Wilk muestra que el valor de p es mayor a 0.05, por lo tanto no es posible rechazar la hipotesis la cual afirma que los residuos siguen una distribución normal.
+
+El calculo de CME y EPAM es necesario para optener el promedio de errores porcentuales en la serie de tiempo.
+```{r}
+f = function(x) {Lm$coefficients[1] + Lm$coefficients[2] * x}
+pred = f(array_trimestre)
+cme = mean((pred - ventas)^2, na.rm = TRUE)
+print("CME: ")
+print(cme)
+epam = mean(abs((pred - ventas)/ventas), na.rm = TRUE)
+print("EPAM: ")
+print(epam)
+```
+#*****
+
+A continuación se muestra la comparación de las ventas reales vs la predicción realizada utilizando Ventas = 0.1474*trimestre + 5.108
+
+```{r, out.width = '80%'}
+plot(array_trimestre,ventas, type = "o",
+     xlab = "Trimestre", ylab = "Ventas (millones)",
+     main = "Ventas de tv´s")
+lines(array_trimestre, predict(Lm), col = "red")
+y2 <- predict(Lm) * decomp$seasonal
+lines(array_trimestre, y2, col = "blue", type = "o")
+```
+
+Como se observa en la gráfica, los valores de predicción(color azul) se ajustan demasiado al valor real de las ventas (color negro).
+A manera de resumen, la implementación de un modelo lineal es eficiente para predecir el comportamiento de la serie de tiempo, ya que explica el 92% de la variabilidad. Sumado a esto el p value es < 0.05 por lo que se rechaza la hipotesis nula debido a que el valor de p es menor que alfa. por otro lado los residuos son aleatorios ya que no se ajustan a alguna tendencia. Lo cual fue validado anteriormente, por lo cual es modelo tiene una alta precisión teniedno un CME de 0.029.  
+A continuación se predecirán las ventas del año proximo por trimestre.
+
+
+
+```{r, out.width = '80%'}
+f <- function(x) {Lm$coefficients[1] + Lm$coefficients[2] * x}
+x2 <- 17:20
+y2 <- f(x2) * decomp$figure
+
+x3 <- 16:20
+preds <- c(ventas[16] ,y2)
+plot(x3,
+     preds,
+     type = "o",
+     xlab = "trimestre",
+     ylab = "Ventas (millones)",
+     main = "Ventas de tv´s",
+     xlim = c(1,20),
+     ylim = c(4, 9.5),
+     col = "blue")
+lines(array_trimestre, ventas, col = "black", type = "o")
+
+selected <- c(17, 18, 19, 20)
+
+# Index the elements with the vector
+text(x3, preds,
+     labels = round(preds, digits = 2),
+     cex = 0.6, pos = 4, col = "blue")
+```
+
+Este modelo es util para predecir las ventas trimestrales de la compañía las cuales siguen una tendencia a incrementarse con el tiempo. Esta información es util para tomar decisiones financieras importantes en base a las ventas esperadas. En conclusión Panasonic puede salvarse de la quiebra.
+
+
+
+
+
+
+
