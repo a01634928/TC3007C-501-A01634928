@@ -1,0 +1,168 @@
+---
+title: "Los peces y el mercurio"
+author: "David Núñez A01634928"
+date: "2022-11-30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+#install.packages("factoextra")
+#install.packages("FactoMineR")rlang
+#install.packages("rlang")
+```
+
+La contaminación por mercurio de peces en el agua dulce comestibles es una amenaza directa contra nuestra salud. Se llevó a cabo un estudio reciente en 53 lagos de Florida con el fin de examinar los factores que influían en el nivel de contaminación por mercurio.
+La descripción de los datos es la siguiente:  
+X1 = número de indentificación  
+X2 = nombre del lago  
+X3 = alcalinidad (mg/l de carbonato de calcio)  
+X4 = PH  
+X5 = calcio (mg/l)  
+X6 = clorofila (mg/l)  
+X7 = concentración media de mercurio (parte por millón) en el tejido muscualar del grupo de peces estudiados en cada lago  
+X8 = número de peces estudiados en el lago  
+X9 = mínimo de la concentración de mercurio en cada grupo de peces  
+X10 = máximo de la concentración de mercurio en cada grupo de peces  
+X11 = estimación (mediante regresión) de la concentración de mercurio en el pez de 3 años (o promedio de mercurio cuando la edad no está disponible)  
+X12 = indicador de la edad de los peces (0: jóvenes; 1: maduros)  
+
+Para dar solución a este problema se utilizaron metodos estadisticos tales como distribución normal multivariada debido a que los atributos de los datos pudieran estar correlacionados y PCA (componentes principales) para obtener las combinaciones lineales de las de las variables que explican la varianza de los datos en pro de determinar su inferencia en la concentración de Mercurio en los peces.
+
+## Normal multivariada
+
+El test de Anderson-Darling se define como:  
+H0: es que sigue una distribución normal  
+H1: no sigue una distribución normal  
+
+```{r}
+library(MVN)
+df=read.csv('mercurio.csv')
+df_mvn = mvn(df[,3:11],subset = NULL,mvn = "mardia", covariance = FALSE,showOutliers = FALSE)
+df_mvn$univariateNormality
+```
+
+
+
+Tomando en cuenta las vriables numericas se muestra normalidad bivariada, debido a que tenemos dos variables normales X4 y X10,
+debido a que p es mayor a 0.05 lo tanto se cumple H0 sigue una distribución normal.
+
+
+```{r}
+mvn_pl <- mvn(data.frame(df$X4, df$X10),
+               subset = NULL,
+               mvn = "mardia",
+               covariance = FALSE,
+               showOutliers = FALSE,
+               multivariatePlot = "contour")
+
+```
+Se observa sesgo a la izquierda en la media de X4 y sesgo a la derecha de la media de X10
+
+
+
+
+```{r}
+mvn_outliers = mvn(data.frame(df$X4, df$X10),
+               subset = NULL,
+               mvn = "mardia",
+               covariance = FALSE,
+               showOutliers = TRUE)
+#mvn_outliers
+#mvn_outliers$multivariateOutliers
+cat("multivariateOutliers: ", mvn_outliers$multivariateOutliers, "NULL")
+```
+
+NO se detectan valores atípicos en la serie de datos. Por lo tanto se prosigue a realizar análisis de componentes principales
+
+
+## PCA
+
+Para obtener los componenetes principales se necesita calcular una matriz de covarianzas y correlaciones para las variables numericas de nuesto dataframe.
+```{r}
+df_cov = cov(df[,3:11])
+df_cor = cor(df[,3:11])
+df_cov
+df_cor
+```
+Una vez calculados se obtienenen los eigen valores y vectores propios de cada matriz.
+```{r}
+e_cov = eigen(df_cov)
+e_cor = eigen(df_cor)
+e_cov
+e_cor
+e_values_cor = e_cor$values
+e_values_cov = e_cov$values
+```
+
+Estos valores serán utiles para determinar la proporción de varianza/correlación explicada por cada componente. Para realizar esto se divide lamba entre la varianza/correlación total (las lambdas están en eigen(S)[1]). La varianza/correlación total es la suma de las varianza/correlación de la diagonal de S. Una forma es sum(diag(S)).  
+La varianza/correlación total de los componentes es la suma de los valores propios (es decir, la suma de la varianza/correlación de cada componente). Las combinaciones lineales intentan replicar la varianza de X.
+
+```{r}
+y = c()
+for (i in 1:length(e_cov$values)){
+  div_cov = e_values_cov[i]/sum(e_values_cov)
+  y = append(y,div_cov)
+  print(div_cov)
+}
+```
+
+Valores de varianza explicada, que tanto peso tienen las variables al modelo.
+
+Abajo se muestra el acumulado de los resultados anteriores sumando los primeros dos componentes
+
+```{r}
+cumsum(y)
+```
+
+```{r}
+y = c()
+for (i in 1:length(e_cor$values)){
+  div_cor = e_values_cor[i]/sum(e_values_cor)
+  y = append(y,div_cor)
+  print(div_cor)
+}
+```
+
+Valores de correlación, que tanto peso tienen las variables al modelo.
+Abajo se muestra el acumulado de los resultados anteriores sumando los primeros dos componentes
+
+```{r}
+cumsum(y)
+```
+
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(ggplot2)
+cp3 = PCA(df[,3:11])
+```
+En el segundo gráfico muestra los vecotres generados de cada componente respecto a dos dimensiones. Se puede apreciar que hay tres direcciones principales, en el primer cuadrante se observa el primer grupo integrado por variables que corresponden a factores que afectan el agua(X3, X4, X5 y X6), tales como alcanilidad, ph, calcio y clorofila. El segundo por factores relacionados a la concentración de mercurio en los peces(X7, X9, X10 y X11) y la tercera dirección va sobre la variable de la cantidad de peces estudiados. 
+Por otro lado el tamaño del vector indica el aporte de cada componente al modelo con lo cual la dirección que indica el componente de la variable X8 no es muy relevante al modelo.
+
+
+```{r}
+fviz_pca_ind(cp3, col.ind = "blue", addEllipses = TRUE, repel = TRUE)
+```
+En el primer gráfico se observa la distancia de mahalanobis, los datos que se encuentras por afuera de la circunferencia de la elipse son los datos atipicos de la distancia de mahalanobis. 
+
+```{r}
+fviz_screeplot(cp3)
+```
+En conclusión se utilizan dos modelos porque a partir del segundo componente se observa un cambio abrupto en la linea de tendencia que sigue la metrica de porcentaje de explicación de varianza. Debido a que la expliación del modelo estabiliza su incremento a partir del segundo componente. Otra razón importante es que el tercer componente se comprobó en la gráfica de vectores que no es muy significativa para el modelo. Utilizando un componente que agrupa variables de concentración de mercurio en los peces y otro que agrupa variables de la condición del agua.
+
+
+
+
+
+
+
+
+
+
